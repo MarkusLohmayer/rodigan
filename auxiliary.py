@@ -21,7 +21,8 @@ def skew_matrix_from_vector(axial_vector):
     -------
     skew_matrix : ndarray, shape = (3, 3)
     """
-    assert axial_vector.shape == (3,)
+    if axial_vector.shape != (3,):
+        raise ValueError("axial_vector is not of shape (3,)")
 
     skew_matrix = np.zeros((3, 3), dtype=numba.float64)
 
@@ -55,8 +56,11 @@ def rotation_matrix_from_quaternion(quaternion):
     -------
     rotation_matrix : ndarray, shape = (3, 3)
     """
-    assert quaternion.shape == (4,)
-    assert np.abs(np.linalg.norm(quaternion) - 1) < 0.0001
+    if quaternion.shape != (4,):
+        raise ValueError("quaternion is not of shape (4,)")
+
+    if np.abs(np.linalg.norm(quaternion) - 1) > 0.0001:
+        raise ValueError("quaternion is not a unit quaternion")
 
     rotation_matrix = np.zeros((3, 3), dtype=numba.float64)
 
@@ -78,7 +82,7 @@ def rotation_matrix_from_quaternion(quaternion):
 
 
 @numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
-def rotation_matrix_from_axis_anlge(axis_angle):
+def rotation_matrix_from_axis_angle(axis_angle):
     """
     Computes the 3D rotaion matrix that corresponds to the
     axis-angle representation given by the vector axis_angle.
@@ -87,7 +91,7 @@ def rotation_matrix_from_axis_anlge(axis_angle):
 
     The function first converts the axis-angle representation into the
     correponding unit quaternion and then uses the function
-    rotation_matrix_from_quaternion from the same module to
+    `rotation_matrix_from_quaternion` from the same module to
     compute the rotation matrix.
 
     Parameters
@@ -98,7 +102,8 @@ def rotation_matrix_from_axis_anlge(axis_angle):
     -------
     rotation_matrix : ndarray, shape = (3, 3)
     """
-    assert axis_angle.shape == (3,)
+    if axis_angle.shape != (3,):
+        raise ValueError("axis_angle is not of shape (3,)")
 
     theta = np.linalg.norm(axis_angle)
 
@@ -115,9 +120,9 @@ def rotation_matrix_from_axis_anlge(axis_angle):
     return rotation_matrix_from_quaternion(unit_quaternion)
 
 
-def test_rotation_matrix_from_axis_anlge():
+def test_rotation_matrix_from_axis_angle():
     """
-    Tests the function `rotation_matrix_from_axis_anlge` by creating
+    Tests the function `rotation_matrix_from_axis_angle` by creating
     a known rotation matrix and comparing the results.
     """
     # rotate around z-axis by angle theta
@@ -126,13 +131,14 @@ def test_rotation_matrix_from_axis_anlge():
                                       [+np.sin(theta), +np.cos(theta), 0],
                                       [0, 0, 1]])
     axis_angle = theta * np.array([0, 0, 1])
-    rotation_marrix = rotation_matrix_from_axis_anlge(axis_angle)
-    assert np.allclose(known_rotation_matrix, rotation_marrix)
+    rotation_matrix = rotation_matrix_from_axis_angle(axis_angle)
+    assert np.allclose(known_rotation_matrix, rotation_matrix)
 
     # further, assert that the rotation matrix is unitary
     assert np.allclose(np.eye(3), np.dot(rotation_matrix.T, rotation_matrix))
 
 
+@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
 def quaternion_from_rotation_matrix(rotation_matrix):
     """
     Computes the unit quaternion that corresponds to the
@@ -140,46 +146,139 @@ def quaternion_from_rotation_matrix(rotation_matrix):
 
     Parameters
     ----------
-    rotation_matrix : ndarray, shape = (3, 3)
+    rotation_matrix : array_like, shape = (3, 3)
 
     Returns
     -------
-    unit_quaternion : ndarray, shape = (4,)
+    quaternion : ndarray, shape = (4,)
     """
-    assert rotation_marrix.shape == (3, 3)
+    if rotation_matrix.shape != (3, 3):
+        raise ValueError("rotation_matrix is not of shape (3, 3)")
 
-    unit_quaternion = np.zeros((4,))
+    quaternion = np.zeros((4,))
 
-    cand = np.array([np.trace(rotation_matrix), rotation_matrix[0,0], rotation_matrix[1,1], rotation_matrix[2,2]])
+    cand = np.array([np.trace(rotation_matrix), rotation_matrix[0, 0],
+                     rotation_matrix[1, 1], rotation_matrix[2, 2]])
     ind = np.argmax(cand)
     maxval = cand[ind]
 
-    if ind ==0:
-        unit_quaternion[0] = np.sqrt(1 + maxval) * 0.5
-        unit_quaternion[1] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / (4*unit_quaternion[0])
-        unit_quaternion[2] = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / (4*unit_quaternion[0])
-        unit_quaternion[3] = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) / (4*unit_quaternion[0])
-    elif ind==1:
-        unit_quaternion[1] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
-        unit_quaternion[0] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / (4*unit_quaternion[1])
-        unit_quaternion[2] = (rotation_matrix[1, 0] + rotation_matrix[0, 1]) / (4*unit_quaternion[1])
-        unit_quaternion[3] = (rotation_matrix[2, 0] + rotation_matrix[0, 2]) / (4*unit_quaternion[1])
-    elif ind==2:
-        unit_quaternion[2] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
-        unit_quaternion[0] = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / (4*unit_quaternion[2])
-        unit_quaternion[1] = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / (4*unit_quaternion[2])
-        unit_quaternion[3] = (rotation_matrix[2, 1] + rotation_matrix[1, 2]) / (4*unit_quaternion[2])
-    elif ind==3:
-        unit_quaternion[3] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
-        unit_quaternion[0] = (rotation_matrix[1,0] - rotation_matrix[0,1]) / (4*unit_quaternion[3])
-        unit_quaternion[1] = (rotation_matrix[0,2] + rotation_matrix[2,0]) / (4*unit_quaternion[3])
-        unit_quaternion[2] = (rotation_matrix[1,2] + rotation_matrix[2,1]) / (4*unit_quaternion[3])
+    if ind == 0:
+        quaternion[0] = np.sqrt(1 + maxval) * 0.5
+        quaternion[1] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / (4*quaternion[0])
+        quaternion[2] = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / (4*quaternion[0])
+        quaternion[3] = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) / (4*quaternion[0])
+    elif ind == 1:
+        quaternion[1] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
+        quaternion[0] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / (4*quaternion[1])
+        quaternion[2] = (rotation_matrix[1, 0] + rotation_matrix[0, 1]) / (4*quaternion[1])
+        quaternion[3] = (rotation_matrix[2, 0] + rotation_matrix[0, 2]) / (4*quaternion[1])
+    elif ind == 2:
+        quaternion[2] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
+        quaternion[0] = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / (4*quaternion[2])
+        quaternion[1] = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / (4*quaternion[2])
+        quaternion[3] = (rotation_matrix[2, 1] + rotation_matrix[1, 2]) / (4*quaternion[2])
+    elif ind == 3:
+        quaternion[3] = np.sqrt(0.5*maxval + 0.25*(1 - np.trace(rotation_matrix)))
+        quaternion[0] = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) / (4*quaternion[3])
+        quaternion[1] = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / (4*quaternion[3])
+        quaternion[2] = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / (4*quaternion[3])
+
+    assert np.abs(np.linalg.norm(quaternion) - 1) < 0.0001
+
+    return quaternion
+
+
+def test_quaternion_roundtrip2():
+    """
+    Tests the functions `quaternion_from_rotation_matrix` and
+    `rotation_matrix_from_quaternion` by creating a random
+    rotation matrix (via the function `rotation_matrix_from_axis_angle`)
+    and checking if the composition of the two functions
+    renders the identity.
+    """
+
+    # create a random rotation in axis-angle representation
+    axis_angle = np.random.normal(loc=0.0, scale=4.0, size=3)
+
+    # convert to a rotation matrix
+    rotation_matrix = rotation_matrix_from_axis_angle(axis_angle)
+
+    # assert that the rotation matrix is unitary
+    assert np.allclose(np.eye(3), np.dot(rotation_matrix.T, rotation_matrix))
+
+    # apply the composition of the two functions
+    unit_quaternion = quaternion_from_rotation_matrix(rotation_matrix)
+    rotation_matrix_test = rotation_matrix_from_quaternion(unit_quaternion)
+
+    #print(np.linalg.norm(rotation_matrix_test - rotation_matrix))
+
+    assert np.allclose(rotation_matrix, rotation_matrix_test)
+
+
+@numba.jit(numba.float64[:](numba.float64[:]), nopython=True)
+def axis_angle_from_quaternion(quaternion):
+    """
+    Computes the axis-angle representation that corresponds to the
+    unit-quaternion representation of a 3D rotation.
+
+    Parameters
+    ----------
+    quaternion : array_like, shape = (4,)
+
+    Returns
+    -------
+    axis_angle : ndarray, shape = (3,)
+    """
+
+    if quaternion.shape != (4,):
+        raise ValueError("quaternion is not of shape (4,)")
+
+    axis_angle = np.zeros((3), dtype=numba.float64)
+
+    #?? why is the real function used ??
+    #assert np.imag(np.arcsin(np.linalg.norm(quaternion[1:]))) == 0
+
+    norm_of_q123 = np.linalg.norm(quaternion[1:])
+
+    if quaternion[0] >= 0:
+        #theta = 2 * np.real(np.arcsin(norm_of_q123))
+        theta = 2 * np.arcsin(norm_of_q123)
     else:
-        raise Exception
+        #theta = 2 * (np.pi - np.real(np.arcsin(norm_of_q123)))
+        theta = 2 * (np.pi - np.arcsin(norm_of_q123))
 
-    assert np.abs(np.linalg.norm(unit_quaternion) - 1) < 0.0001
+    if theta > 1e-6:
+        axis_angle = (theta / norm_of_q123) * quaternion[1:]
 
-    return unit_quaternion
+    return axis_angle
+
+
+@numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True)
+def update_axis_angle(current_axis_angle, increment_axis_angle):
+    """
+    Updates the axis-angle representation of a cross-section rotation
+    by an increment, which is also given in axis-angle representation.
+
+    Parameters
+    ----------
+    current_axis_angle : array_like , shape = (3,)
+    increment_axis_angle : array_like , shape = (3,)
+
+    Returns
+    -------
+    updated_axis_angle : ndarray , shape = (3,)
+    """
+
+    increment_rotation_matrix = rotation_matrix_from_axis_(increment_axis_angle)
+
+    current_rotation_matrix = rotation_matrix_from_axis_angle(current_axis_angle)
+
+    updated_rotation_matrix = np.dot(increment_rotation_matrix, current_rotation_matrix)
+
+    quaternion = quaternion_from_rotation_matrix(updated_rotation_matrix)
+    updated_axis_angle = axis_angle_from_quaternion(quaternion)
+
+    return updated_axis_angle
 
 
 def plot_centerline(centerline):
