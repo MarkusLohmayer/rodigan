@@ -123,10 +123,11 @@ def rotation_matrix_from_axis_angle(axis_angle):
 def test_rotation_matrix_from_axis_angle():
     """
     Tests the function `rotation_matrix_from_axis_angle` by creating
-    a known rotation matrix and comparing the results.
+    a known rotation matrix (rotation arround z-axis) and comparing the results.
     """
-    # rotate around z-axis by angle theta
-    theta = (3/2)*np.pi
+    # rotate around z-axis by a random angle theta
+    # with -2pi < theta <+2pi
+    theta = float(np.random.uniform(low=-1.99, high=+1.99, size=1) * np.pi)
     known_rotation_matrix = np.array([[+np.cos(theta), -np.sin(theta), 0],
                                       [+np.sin(theta), +np.cos(theta), 0],
                                       [0, 0, 1]])
@@ -183,12 +184,16 @@ def quaternion_from_rotation_matrix(rotation_matrix):
         quaternion[1] = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / (4*quaternion[3])
         quaternion[2] = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / (4*quaternion[3])
 
+    # make the representation unique
+    #if quaternion[0] < 0:
+    #    quaternion *= -1
+
     assert np.abs(np.linalg.norm(quaternion) - 1) < 0.0001
 
     return quaternion
 
 
-def test_quaternion_roundtrip2():
+def test_quaternion_roundtrip():
     """
     Tests the functions `quaternion_from_rotation_matrix` and
     `rotation_matrix_from_quaternion` by creating a random
@@ -253,6 +258,33 @@ def axis_angle_from_quaternion(quaternion):
     return axis_angle
 
 
+def test_axis_angle_roundtrip():
+    """
+    Tests the functions `axis_angle_from_quaternion`,
+    `quaternion_from_rotation_matrix` and
+    `rotation_matrix_from_quaternion` by creating a random
+    rotation in axis-angle representation and checking if the composition
+    of the three functions renders the identity.
+    """
+    while True:
+        axis_angle = np.random.normal(loc=0.0, scale=1.0, size=3)
+        if np.linalg.norm(axis_angle) < 2*np.pi:
+            break
+
+    axis_angle_test = axis_angle_from_quaternion( \
+                      quaternion_from_rotation_matrix( \
+                      rotation_matrix_from_axis_angle(axis_angle)))
+
+    assert np.allclose(axis_angle, axis_angle_test)
+
+    # check additionally if it works for the zero-rotation
+    assert np.allclose(axis_angle_from_quaternion( \
+                      quaternion_from_rotation_matrix( \
+                      rotation_matrix_from_axis_angle(np.zeros((3))))), np.zeros((3)))
+
+
+
+
 @numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True)
 def update_axis_angle(current_axis_angle, increment_axis_angle):
     """
@@ -269,7 +301,7 @@ def update_axis_angle(current_axis_angle, increment_axis_angle):
     updated_axis_angle : ndarray , shape = (3,)
     """
 
-    increment_rotation_matrix = rotation_matrix_from_axis_(increment_axis_angle)
+    increment_rotation_matrix = rotation_matrix_from_axis_angle(increment_axis_angle)
 
     current_rotation_matrix = rotation_matrix_from_axis_angle(current_axis_angle)
 
