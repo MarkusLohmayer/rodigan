@@ -1,3 +1,6 @@
+import numpy as np
+
+#numpy version, not compatible with numba
 def skew_matrix_from_vector(axial_vector):
     """
     Computes the skew symmetric matrix corresponding to the axial vector
@@ -14,6 +17,7 @@ def skew_matrix_from_vector(axial_vector):
     return np.array([[0, -axial_vector[2], axial_vector[1]],
                      [axial_vector[2], 0, -axial_vector[0]],
                      [-axial_vector[1], axial_vector[0], 0]])
+
 
 def rotation_matrix_from_quaternion(quaternion):
     """
@@ -97,33 +101,3 @@ def quaternion_from_rotation_matrix2(rotation_matrix):
     assert np.abs(np.linalg.norm(unit_quaternion) - 1) < 0.0001
 
     return unit_quaternion
-
-
-def test_quaternion_roundtrip2():
-    """
-    Tests the functions `quaternion_from_rotation_matrix` and
-    `rotation_matrix_from_quaternion` by creating a random
-    unit quaternion and checking if the composition of the
-    two functions renders the identity.
-    """
-    # creating a random unit quaternion
-    unit_quaternion = np.random.randn(4)
-    unit_quaternion /= np.linalg.norm(unit_quaternion)
-
-    # apply the composition of the two functions
-    rotation_matrix = rotation_matrix_from_quaternion(unit_quaternion)
-    unit_quaternion_test = quaternion_from_rotation_matrix(rotation_matrix)
-
-    print(np.linalg.norm(unit_quaternion_test - unit_quaternion))
-
-    print(unit_quaternion)
-
-    check = np.allclose(unit_quaternion, unit_quaternion_test)
-
-    if not check:
-        print(unit_quaternion_test)
-
-        # assert that the rotation matrix is unitary
-        assert np.allclose(np.eye(3), np.dot(rotation_matrix.T, rotation_matrix))
-
-    return check
