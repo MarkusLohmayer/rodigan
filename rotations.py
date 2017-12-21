@@ -53,6 +53,9 @@ def matrix_from_quaternion(quaternion):
     if np.abs(np.linalg.norm(quaternion) - 1) > 0.0001:
         raise ValueError("quaternion is not a unit quaternion")
 
+    if quaternion[0] < 0:
+        raise ValueError("quaternion must have positive real part")
+
     matrix = np.zeros((3, 3), dtype=numba.float64)
 
     matrix[0, 0] = 1 - 2 * quaternion[2]**2 - 2 * quaternion[3]**2
@@ -74,7 +77,7 @@ def matrix_from_quaternion(quaternion):
 @numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
 def quaternion_from_matrix(matrix):
     """
-    Computes the unit quaternion that corresponds to the
+    Computes the unit quaternion that corresponds to a
     3D rotation matrix.
 
     Parameters
@@ -85,7 +88,7 @@ def quaternion_from_matrix(matrix):
     Returns
     -------
     quaternion : ndarray, shape = (4,)
-        unit quaternion
+        Unit quaternion with positive real part (first component).
     """
     if matrix.shape != (3, 3):
         raise ValueError("matrix is not of shape (3, 3)")
@@ -118,9 +121,9 @@ def quaternion_from_matrix(matrix):
         quaternion[1] = (matrix[0, 2] + matrix[2, 0]) / (4*quaternion[3])
         quaternion[2] = (matrix[1, 2] + matrix[2, 1]) / (4*quaternion[3])
 
-    # make the representation unique
-    #if quaternion[0] < 0:
-    #    quaternion *= -1
+    # to make the representation unique, fix the real part to be positive
+    if quaternion[0] < 0:
+        quaternion *= -1
 
     assert np.abs(np.linalg.norm(quaternion) - 1) < 0.0001
 
@@ -135,6 +138,9 @@ def quaternion_from_euler(euler):
     axis-angle representation given by the (Euler) vector euler.
     The direction of the vector euler encodes the axis of rotation.
     The 2-norm of euler encodes the angle of rotation in radians.
+
+    Note that unit quaternions can only represent rotations with
+    0 <= theta <= 2pi, where theta it the Euler angle (norm of euler).
 
     Parameters
     ----------
@@ -160,6 +166,10 @@ def quaternion_from_euler(euler):
     axis = euler / theta
     quaternion[0] = np.cos(theta / 2)
     quaternion[1:] = np.sin(theta / 2) * axis
+
+    if quaternion[0] < 0:
+        quaternion *= -1
+
     return quaternion
 
 
@@ -184,24 +194,38 @@ def euler_from_quaternion(quaternion):
     if quaternion.shape != (4,):
         raise ValueError("quaternion is not of shape (4,)")
 
-    euler = np.zeros((3), dtype=numba.float64)
+    if np.abs(np.linalg.norm(quaternion) - 1) > 0.0001:
+        raise ValueError("quaternion is not a unit quaternion")
 
-    #?? why is the real function used ??
-    #assert np.imag(np.arcsin(np.linalg.norm(quaternion[1:]))) == 0
+    if quaternion[0] < 0:
+        raise ValueError("quaternion must have positive real part")
+
+    euler = np.zeros((3), dtype=numba.float64)
 
     norm_of_q123 = np.linalg.norm(quaternion[1:])
 
-    if quaternion[0] >= 0:
-        #theta = 2 * np.real(np.arcsin(norm_of_q123))
+    # probably this condition does not help precision
+    if norm_of_q123 < 0.5:
         theta = 2 * np.arcsin(norm_of_q123)
     else:
-        #theta = 2 * (np.pi - np.real(np.arcsin(norm_of_q123)))
-        theta = 2 * (np.pi - np.arcsin(norm_of_q123))
+        theta = 2 * np.arccos(quaternion[0])
 
     if theta > 1e-6:
         euler = (theta / norm_of_q123) * quaternion[1:]
 
     return euler
+
+
+
+
+@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
+def euler_from_matrix(matrix):
+    return euler_from_quaternion(quaternion_from_matrix(matrix))
+
+
+@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
+def matrix_from_euler(euler):
+    return matrix_from_quaternion(quaternion_from_euler(euler))
 
 
 
@@ -223,15 +247,12 @@ def update_euler(current_euler, increment_euler):
     updated_euler : ndarray , shape = (3,)
     """
 
-    increment_matrix = matrix_from_quaternion( \
-                       quaternion_from_euler(increment_euler))
+    increment_matrix = matrix_from_euler(increment_euler)
 
-    current_matrix = matrix_from_quaternion( \
-                     quaternion_from_euler(current_euler))
+    current_matrix = matrix_from_euler(current_euler)
 
     updated_matrix = np.dot(increment_matrix, current_matrix)
 
-    updated_euler = euler_from_quaternion( \
-                    quaternion_from_matrix(updated_matrix))
+    updated_euler = euler_from_matrix(updated_matrix)
 
     return updated_euler

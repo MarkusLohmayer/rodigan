@@ -33,11 +33,11 @@ def test_matrix_quaternion():
     # create a random rotation in axis-angle representation
     euler = np.random.normal(loc=0.0, scale=4.0, size=3)
 
-    # convert to a rotation matrix
+    # convert to a matrix
     known_matrix = rotations.matrix_from_quaternion( \
                    rotations.quaternion_from_euler(euler))
 
-    # assert that the rotation matrix is unitary
+    # assert that known_matrix is unitary
     assert np.allclose(np.eye(3), np.dot(known_matrix.T, known_matrix))
 
     # apply the composition of the two functions
@@ -55,7 +55,7 @@ def test_quaternion_matrix():
     the two functions renders the identity.
     """
 
-    # creating a random unit quaternion
+    # creating a random unit quaternion with positive real part
     known_quaternion = np.random.randn(4)
     known_quaternion /= np.linalg.norm(known_quaternion)
     if known_quaternion[0] < 0:
@@ -65,7 +65,13 @@ def test_quaternion_matrix():
     quaternion = rotations.quaternion_from_matrix( \
                  rotations.matrix_from_quaternion(known_quaternion))
 
-    assert np.allclose(known_quaternion, quaternion)
+    check = np.allclose(known_quaternion, quaternion)
+
+    if not check:
+        print('known_quaternion', known_quaternion)
+        print('quaternion', quaternion)
+
+    assert check
 
 
 
@@ -104,9 +110,11 @@ def test_quaternion_euler():
     functions renders the identity.
     """
 
-    # creating a random unit quaternion
+    # creating a random unit quaternion with positive real part
     known_quaternion = np.random.randn(4)
     known_quaternion /= np.linalg.norm(known_quaternion)
+    if known_quaternion[0] < 0:
+        known_quaternion *= -1
 
     # apply the composition of the two functions
     quaternion = rotations.quaternion_from_euler( \
@@ -219,3 +227,33 @@ def test_matrix_from_euler():
              rotations.quaternion_from_euler(known_euler))
 
     assert np.allclose(known_matrix, matrix)
+
+
+
+def test_update_euler():
+    """
+    Adding two known rotation matrices and check for the right result.
+    """
+    # rotate around z-axis by a random angle theta (-2pi < theta <+2pi)
+    theta = np.pi/4
+
+    known_matrix1 = np.array([[+np.cos(theta), -np.sin(theta), 0],
+                              [+np.sin(theta), +np.cos(theta), 0],
+                              [0, 0, 1]])
+    euler1 = rotations.euler_from_matrix(known_matrix1)
+
+    theta = np.pi/2
+
+    known_matrix2 = np.array([[+np.cos(theta), -np.sin(theta), 0],
+                              [+np.sin(theta), +np.cos(theta), 0],
+                              [0, 0, 1]])
+    euler2 = rotations.euler_from_matrix(known_matrix2)
+
+    theta = np.pi/4 + np.pi/2
+
+    known_matrix3 = np.array([[+np.cos(theta), -np.sin(theta), 0],
+                              [+np.sin(theta), +np.cos(theta), 0],
+                              [0, 0, 1]])
+    euler3 = rotations.euler_from_matrix(known_matrix3)
+
+    assert np.allclose(rotations.update_euler(euler1, euler2), euler3)
