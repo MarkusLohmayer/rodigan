@@ -173,7 +173,6 @@ def euler_from_quaternion(quaternion):
     euler : ndarray, shape = (3,)
         Euler vector (axis-angle representation)
     """
-
     if quaternion.shape != (4,):
         raise ValueError("quaternion is not of shape (4,)")
 
@@ -217,7 +216,6 @@ def euler_from_matrix(matrix):
     euler : array_like , shape = (3,)
         Euler vector
     """
-
     return euler_from_quaternion(quaternion_from_matrix(matrix))
 
 
@@ -238,7 +236,6 @@ def matrix_from_euler(euler):
     matrix : ndarray , shape = (3, 3)
         Rotation matrix
     """
-
     return matrix_from_quaternion(quaternion_from_euler(euler))
 
 
@@ -260,7 +257,6 @@ def update_euler(current_euler, increment_euler):
     -------
     updated_euler : ndarray , shape = (3,)
     """
-
     increment_matrix = matrix_from_euler(increment_euler)
 
     current_matrix = matrix_from_euler(current_euler)
@@ -294,7 +290,6 @@ def interpolate_euler(euler_left, euler_right):
     matrix_interpolant : ndarray , shape = (3, 3)
         Interpolating rotation matrix
     """
-
     matrix_left = matrix_from_euler(euler_left)
     matrix_right = matrix_from_euler(euler_right)
 

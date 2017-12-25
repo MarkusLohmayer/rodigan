@@ -13,7 +13,6 @@ def test_quaternion_from_euler():
     """
     Tests if the function 'quaternion_from_euler' works for a zero rotation.
     """
-
     assert np.allclose(np.array([1, 0, 0, 0], dtype=float),
                        rotations.quaternion_from_euler(np.array([0, 0, 0], dtype=float)))
 
@@ -29,7 +28,6 @@ def test_matrix_quaternion():
     `quaternion_from_euler`) and checking if the composition of the two
     functions renders the identity.
     """
-
     # create a random rotation in axis-angle representation
     euler = np.random.normal(loc=0.0, scale=4.0, size=3)
 
@@ -54,7 +52,6 @@ def test_quaternion_matrix():
     by creating a random unit quaternion and checking if the composition of
     the two functions renders the identity.
     """
-
     # creating a random unit quaternion with positive real part
     known_quaternion = np.random.randn(4)
     known_quaternion /= np.linalg.norm(known_quaternion)
@@ -83,7 +80,6 @@ def test_euler_quaternion():
     by creating a random Euler vector and checking if the composition of
     the two functions renders the identity.
     """
-
     # create a random axis-angle representation (-2pi < theta <+2pi)
     while True:
         known_euler = np.random.normal(loc=0.0, scale=1.0, size=3)
@@ -109,7 +105,6 @@ def test_quaternion_euler():
     by creating a random unit quaternion and checking if the composition of the two
     functions renders the identity.
     """
-
     # creating a random unit quaternion with positive real part
     known_quaternion = np.random.randn(4)
     known_quaternion /= np.linalg.norm(known_quaternion)
@@ -135,7 +130,6 @@ def test_euler_matrix():
     renders the identity. Additionally, the same is checked for the
     zero (Euler) vector.
     """
-
     # create a random axis-angle representation (-2pi < theta <+2pi)
     while True:
         known_euler = np.random.normal(loc=0.0, scale=1.0, size=3)
@@ -173,7 +167,6 @@ def test_matrix_euler():
     renders the identity. Additionally, the same is checked for the
     zero (Euler) vector.
     """
-
     # create a random rotation in axis-angle representation
     euler = np.random.normal(loc=0.0, scale=4.0, size=3)
 
@@ -213,7 +206,6 @@ def test_matrix_from_euler():
     creating a known rotation matrix (rotation arround z-axis by a random angle)
     and comparing the results.
     """
-
     # rotate around z-axis by a random angle theta (-2pi < theta <+2pi)
     theta = float(np.random.uniform(low=-1.99, high=+1.99, size=1) * np.pi)
 
