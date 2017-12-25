@@ -1,25 +1,8 @@
 """
-Functions for converting different forms of representation for rotations:
-
-matrix_from_quaternion(quaternion)
-    Uses a direct formula.
-
-quaternion_from_matrix(matrix)
-    Uses one out of four direct formulas to achive numerical stability.
-
-
-quaternion_from_euler(euler)
-    Uses a direct formula.
-
-euler_from_quaternion(quaternion)
-    Uses a direct formula.
-
-
-Function for composing two rotations in axis-angle representation:
-
-update_euler(current_euler, increment_euler)
-    Uses the functions `matrix_from_euler`, `quaternion_from_matrix`
-    and `euler_from_quaternion`.
+This module contains functions that convert between Euler vectors,
+unit quaternions and SO(3) matrices. It also includes other functions which
+build upon these basic functions to achieve things such as "adding up" two
+Euler vectors or interpolating between two Euler vectors.
 """
 
 
@@ -220,11 +203,42 @@ def euler_from_quaternion(quaternion):
 
 @numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
 def euler_from_matrix(matrix):
+    """
+    Composition of the two functions `euler_from_quaternion` and
+    `quaternion_from_matrix`.
+
+    Parameters
+    ----------
+    matrix : ndarray , shape = (3, 3)
+        Rotation matrix
+
+    Returns
+    -------
+    euler : array_like , shape = (3,)
+        Euler vector
+    """
+
     return euler_from_quaternion(quaternion_from_matrix(matrix))
+
 
 
 @numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
 def matrix_from_euler(euler):
+    """
+    Composition of the two functions `matrix_from_quaternion` and
+    `quaternion_from_euler`.
+
+    Parameters
+    ----------
+    euler : array_like , shape = (3,)
+        Euler vector
+
+    Returns
+    -------
+    matrix : ndarray , shape = (3, 3)
+        Rotation matrix
+    """
+
     return matrix_from_quaternion(quaternion_from_euler(euler))
 
 
@@ -256,3 +270,40 @@ def update_euler(current_euler, increment_euler):
     updated_euler = euler_from_matrix(updated_matrix)
 
     return updated_euler
+
+
+
+@numba.jit(numba.float64[:, :](numba.float64[:], numba.float64[:]), nopython=True)
+def interpolate_euler(euler_left, euler_right):
+    """
+    Compute the rotation matrix that interpolates between the two given
+    Euler vectors `euler_left` and `euler_right` in the following sense:
+
+    matrix_right = matrix_difference_halved * matrix_difference_halved * matrix_left
+    matrix_interpolant = matrix_difference_halved * matrix_left
+
+    Parameters
+    ----------
+    euler_left : array_like , shape = (3,)
+        Euler vector that corresponds to matrix_left
+    euler_right : array_like , shape = (3,)
+        Euler vector that corresponds to matrix_right
+
+    Returns
+    -------
+    matrix_interpolant : ndarray , shape = (3, 3)
+        Interpolating rotation matrix
+    """
+
+    matrix_left = matrix_from_euler(euler_left)
+    matrix_right = matrix_from_euler(euler_right)
+
+    matrix_difference = np.dot(matrix_right, matrix_left.T)
+
+    euler_difference = euler_from_matrix(matrix_difference)
+
+    euler_difference_halved = euler_difference / 2
+    matrix_difference_halved = matrix_from_euler(euler_difference_halved)
+
+    matrix_interpolant = np.dot(matrix_difference_halved, matrix_left)
+    return matrix_interpolant

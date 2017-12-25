@@ -42,7 +42,8 @@ def skew_matrix_from_vector(axial_vector):
 @numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True)
 def cross(vector1, vector2):
     """
-    Calculates the cross product of two 3D vectors.
+    Calculates the cross product of two 3D vectors. This function was written
+    because it seems that `numpy.cross` is not supported by `numba.jit`.
 
     Parameters
     ----------
@@ -62,7 +63,7 @@ def cross(vector1, vector2):
 
 
 
-def plot_centerline(centerline):
+def plot_centerline(centerline, scale=0.15):
     """
     Create a 3D plot of the beam's centerline
 
@@ -71,8 +72,17 @@ def plot_centerline(centerline):
     centerline : array_like
         shape[0] = 3 (dimensions of space)
         spape[1] = n_n (number of nodes)
+    scale : float
+        plot axis are chosen as:
+        -scale/2 <= x <= +scale/2
+        -scale/2 <= y <= +scale/2
+               0 <= z <= +scale
     """
+    xylim = scale / 2
     assert centerline.shape[0] == 3
-    figure = plt.figure()
+    figure = plt.figure(figsize=(7, 7))
     axis = figure.add_subplot(111, projection='3d')
+    axis.set_xlim(-xylim, xylim)
+    axis.set_ylim(-xylim, xylim)
+    axis.set_zlim(0, scale)
     axis.plot(centerline[0, :], centerline[1, :], centerline[2, :])
