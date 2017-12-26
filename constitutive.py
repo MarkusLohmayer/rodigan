@@ -85,7 +85,7 @@ class Material:
     @property
     def extensional_stiffness(self):
         """The extensional stiffness of the rod (also called parameter D)."""
-        return 2 * self.elastic_modulus * self.geometry.cross_section_area
+        return self.elastic_modulus * self.geometry.cross_section_area
 
 
     @property

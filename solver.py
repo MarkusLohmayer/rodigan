@@ -17,13 +17,16 @@ class StaticSolver:
     """
     def __init__(self, geometry, material, number_of_elements):
         """
-        Create a new FEM discretization by referencing a geometry, a material and specifying
-        the number of elements, ...??.
+        Create a new FEM discretization by referencing a geometry, a material and
+        specifying the number of elements.
         """
         self.geometry = geometry
         self.material = material
         self.number_of_elements = number_of_elements
+
+        # further parameters that can be manipulated
         self.__load_control_parameters = 1e-4, 1e-4
+        self.__maximum_iterations_per_loadstep = 100
 
 
     @property
@@ -36,8 +39,7 @@ class StaticSolver:
     def geometry(self, value):
         if not isinstance(value, kinematics.Geometry):
             raise TypeError('Please reference an instance of the class kinematics.Geometry!')
-        # pylint: disable=W0201
-        self.__geometry = value
+        self.__geometry = value # pylint: disable=W0201
 
 
     @property
@@ -50,8 +52,7 @@ class StaticSolver:
     def material(self, value):
         if not isinstance(value, constitutive.Material):
             raise TypeError('Please reference an instance of the class constitutive.Material!')
-        # pylint: disable=W0201
-        self.__material = value
+        self.__material = value # pylint: disable=W0201
 
 
     @property
@@ -64,8 +65,7 @@ class StaticSolver:
     def number_of_elements(self, value):
         if not isinstance(value, int) or value <= 2:
             raise ValueError('The number of elements must be a positive integer number')
-        # pylint: disable=W0201
-        self.__number_of_elements = value
+        self.__number_of_elements = value # pylint: disable=W0201
 
 
     @property
@@ -91,6 +91,19 @@ class StaticSolver:
             raise ValueError('Expected a tuple of two floating point numbers!')
 
 
+    @property
+    def maximum_iterations_per_loadstep(self):
+        """Number of iterations that are allowed within one loadstep.
+        If the parameter is set to None then there is no threshold."""
+        return self.__maximum_iterations_per_loadstep
+
+
+    @maximum_iterations_per_loadstep.setter
+    def maximum_iterations_per_loadstep(self, value):
+        if (isinstance(value, int) and value > 0) or value is None:
+            self.__maximum_iterations_per_loadstep = value
+        else:
+            raise ValueError('Expected a positive integer or None!')
 
 
 
@@ -126,31 +139,28 @@ class Cantilever(StaticSolver):
         self.__boundary_condition = value
 
 
-    # @property
-    # def parameters(self):
-    #     """The (read-only) parameters of the problem exported as a dictionary."""
-    #     return {'number_of_nodes' : self.number_of_nodes,
-    #             'number_of_elements' : self.number_of_elements,
-    #             'boundary_condition' : self.boundary_condition,
-    #             'residuals_norm_threshold' : self.load_control_parameters[0],
-    #             'increments_norm_threshold' : self.load_control_parameters[1],
-    #             'length' : self.geometry.length,
-    #             'elasticity_tensor' : self.material.elasticity_tensor,
-    #            }
-
-
     def run_simulation(self):
         """Runs the simulation."""
         if self.boundary_condition is None:
             raise RuntimeError('The boundary condition must first be specified.')
         if self.material.geometry is not self.geometry:
             raise RuntimeError('The material is not referencing the same geometry.')
-        centerline = newton_rhapson_scheme(self.number_of_nodes, self.number_of_elements, self.boundary_condition, self.load_control_parameters[0], self.load_control_parameters[1], self.geometry.length, self.material.elasticity_tensor)
+        centerline = newton_rhapson(self.number_of_nodes, self.geometry.length,
+                                    self.material.elasticity_tensor,
+                                    self.boundary_condition,
+                                    self.load_control_parameters[0],
+                                    self.load_control_parameters[1],
+                                    self.maximum_iterations_per_loadstep
+                                   )
         return centerline
 
 
-#@numba.jit(numba.void(numba.int64, numba.float64[:], numba.float64[:, :], numba.float64[:, :], numba.float64[:], numba.float64[:, :], numba.float64[:], numba.float64[:, :], numba.float64[:, :]), nopython=True, cache=True)
-def assembly(i, element_length, centerline, rotation, increments, second_strain_invariant, residuals, jacobian, elasticity_tensor):
+
+#@numba.jit(numba.void(numba.int64, numba.float64[:], numba.float64[:, :], numba.float64[:, :],
+#numba.float64[:], numba.float64[:, :], numba.float64[:], numba.float64[:, :],
+# numba.float64[:, :]), nopython=True, cache=True)
+def assembly(i, element_length, elasticity_tensor, centerline, rotation,
+             increments, second_strain_invariant, residuals, jacobian):
     """
     update configuration in element i and
     add the contributions of element i to the residuals vector and the Jacobian matrix
@@ -189,8 +199,7 @@ def assembly(i, element_length, centerline, rotation, increments, second_strain_
     # compute first invariant strain measure in the element ...
 
     # compute translational displacement tangent vector
-    h = element_length[i-1]
-    centerline_tangent = (centerline[:, i] - centerline[:, i-1]) / h
+    centerline_tangent = (centerline[:, i] - centerline[:, i-1]) / element_length
 
     # first invariant strain measure
     first_strain_invariant = np.dot(R.T, centerline_tangent)
@@ -201,7 +210,7 @@ def assembly(i, element_length, centerline, rotation, increments, second_strain_
     # compute second invariant strain measure in the element using Simo's formula ...
 
     # incremental rotation tangent vector
-    incremental_euler_tangent = (increments[6*i+3:6*i+6] - increments[6*(i-1)+3:6*(i-1)+6]) / h
+    incremental_euler_tangent = (increments[6*i+3:6*i+6] - increments[6*(i-1)+3:6*(i-1)+6]) / element_length
 
     # incremental Euler vector at midpoint of element
     mid_incremental_euler = (increments[6*i+3:6*i+6] + increments[6*(i-1)+3:6*(i-1)+6]) / 2
@@ -239,7 +248,7 @@ def assembly(i, element_length, centerline, rotation, increments, second_strain_
     # add contriubutions of the element to residual vector ...
 
     # contributions from internal forces and moments
-    crossphin = 0.5*h*auxiliary.cross(centerline_tangent, forces)
+    crossphin = 0.5 * element_length * auxiliary.cross(centerline_tangent, forces)
     residuals[6*(i-1):6*i] += np.hstack((-forces, -crossphin - moments))
     residuals[6*i:6*(i+1)] += np.hstack((+forces, -crossphin + moments))
 
@@ -259,38 +268,38 @@ def assembly(i, element_length, centerline, rotation, increments, second_strain_
     moments_cross = auxiliary.skew_matrix_from_vector(moments)
 
     # material tangent stiffness (symmetric part)
-    jacobian[6*(i-1):6*i, 6*(i-1):6*i] += np.vstack((np.hstack((+C11 / h,
-                                                                -0.5*np.dot(C11, centerline_tangent_cross) + C12 / h)),
-                                                     np.hstack((-0.5*np.dot(centerline_tangent_cross.T, C11) + C21 / h,
-                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(h / 3) - 0.5*np.dot(centerline_tangent_cross.T, C12) + np.dot(C21, centerline_tangent_cross) + C22 / h))))
+    jacobian[6*(i-1):6*i, 6*(i-1):6*i] += np.vstack((np.hstack((+C11 / element_length,
+                                                                -0.5*np.dot(C11, centerline_tangent_cross) + C12 / element_length)),
+                                                     np.hstack((-0.5*np.dot(centerline_tangent_cross.T, C11) + C21 / element_length,
+                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(element_length / 3) - 0.5*np.dot(centerline_tangent_cross.T, C12) + np.dot(C21, centerline_tangent_cross) + C22 / element_length))))
 
-    jacobian[6*i:6*(i+1), 6*i:6*(i+1)] += np.vstack((np.hstack((+C11 / h,
-                                                                +0.5*np.dot(C11, centerline_tangent_cross) + C12 / h)),
-                                                     np.hstack((+0.5*np.dot(centerline_tangent_cross.T, C11) + C21 / h,
-                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(h / 3) + 0.5*np.dot(centerline_tangent_cross.T, C12) + np.dot(C21, centerline_tangent_cross) + C22 / h))))
+    jacobian[6*i:6*(i+1), 6*i:6*(i+1)] += np.vstack((np.hstack((+C11 / element_length,
+                                                                +0.5*np.dot(C11, centerline_tangent_cross) + C12 / element_length)),
+                                                     np.hstack((+0.5*np.dot(centerline_tangent_cross.T, C11) + C21 / element_length,
+                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(element_length / 3) + 0.5*np.dot(centerline_tangent_cross.T, C12) + np.dot(C21, centerline_tangent_cross) + C22 / element_length))))
 
-    jacobian[6*i:6*(i+1), 6*(i-1):6*i] += np.vstack((np.hstack((-C11 / h,
-                                                                +0.5*np.dot(C11, centerline_tangent_cross) - C12 / h)),
-                                                     np.hstack((-0.5*np.dot(centerline_tangent_cross.T, C11) - C21 / h,
-                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(h / 6) - 0.5*np.dot(centerline_tangent_cross.T, C12) - np.dot(C21, centerline_tangent_cross) - C22 / h))))
+    jacobian[6*i:6*(i+1), 6*(i-1):6*i] += np.vstack((np.hstack((-C11 / element_length,
+                                                                +0.5*np.dot(C11, centerline_tangent_cross) - C12 / element_length)),
+                                                     np.hstack((-0.5*np.dot(centerline_tangent_cross.T, C11) - C21 / element_length,
+                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(element_length / 6) - 0.5*np.dot(centerline_tangent_cross.T, C12) - np.dot(C21, centerline_tangent_cross) - C22 / element_length))))
 
-    jacobian[6*(i-1):6*i, 6*i:6*(i+1)] += np.vstack((np.hstack((-C11 / h,
-                                                                -0.5*np.dot(C11, centerline_tangent_cross) - C12 / h)),
-                                                     np.hstack((+0.5*np.dot(centerline_tangent_cross.T, C11) - C21 / h,
-                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(h / 6) + 0.5*np.dot(centerline_tangent_cross.T, C12) - np.dot(C21, centerline_tangent_cross) - C22 / h))))
+    jacobian[6*(i-1):6*i, 6*i:6*(i+1)] += np.vstack((np.hstack((-C11 / element_length,
+                                                                -0.5*np.dot(C11, centerline_tangent_cross) - C12 / element_length)),
+                                                     np.hstack((+0.5*np.dot(centerline_tangent_cross.T, C11) - C21 / element_length,
+                                                                np.dot(np.dot(centerline_tangent_cross.T, C11), centerline_tangent_cross)*(element_length / 6) + 0.5*np.dot(centerline_tangent_cross.T, C12) - np.dot(C21, centerline_tangent_cross) - C22 / element_length))))
 
     # geometric tangent stiffness (non-symmetric)
     jacobian[6*(i-1):6*i, 6*(i-1):6*i] += np.vstack((np.hstack((np.zeros((3, 3)), +0.5*forces_cross)),
-                                                     np.hstack((-0.5*forces_cross, +0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(h / 3)))))
+                                                     np.hstack((-0.5*forces_cross, +0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(element_length / 3)))))
 
     jacobian[6*i:6*(i+1), 6*i:6*(i+1)] += np.vstack((np.hstack((np.zeros((3, 3)), -0.5*forces_cross)),
-                                                     np.hstack((+0.5*forces_cross, -0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(h / 3)))))
+                                                     np.hstack((+0.5*forces_cross, -0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(element_length / 3)))))
 
     jacobian[6*i:6*(i+1), 6*(i-1):6*i] += np.vstack((np.hstack((np.zeros((3, 3)), -0.5*forces_cross)),
-                                                     np.hstack((-0.5*forces_cross, -0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(h / 6)))))
+                                                     np.hstack((-0.5*forces_cross, -0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(element_length / 6)))))
 
     jacobian[6*(i-1):6*i, 6*i:6*(i+1)] += np.vstack((np.hstack((np.zeros((3, 3)), +0.5*forces_cross)),
-                                                     np.hstack((+0.5*forces_cross, +0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(h / 6)))))
+                                                     np.hstack((+0.5*forces_cross, +0.5*moments_cross - np.dot(centerline_tangent_cross.T, forces_cross)*(element_length / 6)))))
 
     # tangent due to distributive load
 
@@ -298,18 +307,19 @@ def assembly(i, element_length, centerline, rotation, increments, second_strain_
 
 
 
-#@numba.jit(numba.float64[:, :](numba.int64, numba.int64, numba.float64[:], numba.float64, numba.float64, numba.float64, numba.float64[:, :]), nopython=True, cache=True)
-def newton_rhapson_scheme(number_of_nodes, number_of_elements, boundary_condition, load_control_parameter_residuals, load_control_parameter_increments, length, elasticity_tensor):
+#@numba.jit(numba.float64[:, :](numba.int64, numba.int64, numba.float64[:], numba.float64,
+#numba.float64, numba.float64, numba.float64[:, :]), nopython=True, cache=True)
+def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_condition,
+                   load_control_parameter_residuals, load_control_parameter_increments,
+                   maximum_iterations_per_loadstep):
     """
     This function contains initialization of required variables and the outer
     loop of a Newton-Rhapson scheme for solving the nonlinear FEM problem.
     """
-
-    # counting total iterations
-    total_iterations = 0
-
     # counting iterations in each load step
     load_step_iterations = [0]
+
+    number_of_elements = number_of_nodes - 1
 
     # length of elements
     element_lengths = np.ones((number_of_elements)) * (length / number_of_elements)
@@ -327,72 +337,75 @@ def newton_rhapson_scheme(number_of_nodes, number_of_elements, boundary_conditio
     # 3 centerline displacement variables + 3 cross-section rotation variables per node
     increments = np.zeros((6 * number_of_nodes), dtype=float) #numba.float64
 
-    # norm of incremental displacement vector (keeping track of convergence)
-    increments_norm = np.inf
-
     # must be stored persistently, so we can use Simo's update formula
     second_strain_invariant = np.zeros((3, number_of_elements), dtype=float) #numba.float64
 
-    # global residuals vector
-    residuals = np.zeros((6*number_of_nodes), dtype=float) #numba.float64
+    # for keeping track of convergence
+    # list of lists: one list per load step
+    residuals_norm_evolution = [[]]
+    increments_norm_evolution = [[]]
 
-    # norm of residuals vector (keeping track of convergence)
-    residuals_norm = np.inf
-
-    # Jacobian matrix
-    jacobian = np.zeros((6*number_of_nodes, 6*number_of_nodes), dtype=float) #numba.float64
-
-    # we start simulation without load and increase the load gradually
+    # we start simulation without any load and then increase the load gradually
     # -> load-controlled Newton-Rhapson
     target_load = boundary_condition
     current_load = np.zeros((6), dtype=float) #numba.float64
 
     # Newton-Rhapson iterations
     while np.max(np.abs(target_load - current_load)) > 0.1:
-        total_iterations += 1
+        # count iterations for current load step
         load_step_iterations[-1] += 1
+        #print(load_step_iterations)
+
+        # start with a blank residuals vector
+        residuals = np.zeros((6*number_of_nodes), dtype=float) #numba.float64
+
+        # start with a blank Jacobian matrix
+        jacobian = np.zeros((6*number_of_nodes, 6*number_of_nodes), dtype=float) #numba.float64
 
         # assemble residuals vector and Jacobian matrix
         for i in range(1, number_of_nodes):
-            assembly(i, element_lengths, centerline, rotation, increments,
-                     second_strain_invariant, residuals, jacobian,
-                     elasticity_tensor)
+            element_length = element_lengths[i-1]
+            assembly(i, element_length, elasticity_tensor, centerline, rotation,
+                     increments, second_strain_invariant, residuals, jacobian)
 
         # apply Neumann boundary conditions
         residuals[-6:] -= current_load
 
-        # compute norm of residuals vector
-        new_residuals_norm = np.linalg.norm(residuals[6:])
-        if new_residuals_norm - residuals_norm > 0.2:
-            print(new_residuals_norm - residuals_norm)
-            raise RuntimeError('Residual grew by printed value!')
-        residuals_norm = new_residuals_norm
-        print('residuals_norm', residuals_norm)
-
         # solve the linearized problem
         increments[6:] = np.linalg.solve(-jacobian[6:, 6:], residuals[6:])
 
+        # compute norm of residuals vector
+        residuals_norm = np.linalg.norm(residuals[6:])
+        residuals_norm_evolution[-1].append(residuals_norm)
+
         # compute norm of increments vector
         increments_norm = np.linalg.norm(increments[6:])
-        print('increments_norm', increments_norm)
+        increments_norm_evolution[-1].append(increments_norm)
 
         # don't allow large increments
         if increments_norm > 1:
-            print("not good: normalized increments")
+            print('normalized increments!')
             increments[6:] = increments[6:] / increments_norm
 
-        # when converged: change boundary condition for next iteration (load control)
-        if residuals_norm < load_control_parameter_residuals and \
-           increments_norm < load_control_parameter_increments:
-            load_change = 0.1 * np.sign(target_load - current_load)
-            current_load += load_change
-            load_step_iterations.append(0)
-            print("load_change", load_change)
-            print("current_load", current_load)
-
-        if load_step_iterations[-1] > 200:
+        # stop execution after maximum iterations in one load step
+        if load_step_iterations[-1] > maximum_iterations_per_loadstep:
             raise RuntimeError('Stopped execution after reaching maximum number'
                                ' of iterations in this load step!')
 
+        # check for convergence to possibly begin next load step
+        if residuals_norm < load_control_parameter_residuals and \
+           increments_norm < load_control_parameter_increments:
 
-    return centerline
+            # increase loading ->
+            # current load step serves as initial condition for next load step
+            load_change = 0.1 * np.sign(target_load - current_load)
+            current_load += load_change
+
+            # iteration counts and convergence indicators on a per-load-step basis
+            load_step_iterations.append(0)
+            residuals_norm_evolution.append([])
+            increments_norm_evolution.append([])
+
+    #load_step_iterations = np.array(load_step_iterations)
+
+    return centerline, load_step_iterations, residuals_norm_evolution, increments_norm_evolution
