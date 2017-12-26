@@ -1,17 +1,13 @@
 """
 This module contains functions that convert between Euler vectors,
-unit quaternions and SO(3) matrices. It also includes other functions which
-build upon these basic functions to achieve things such as "adding up" two
-Euler vectors or interpolating between two Euler vectors.
+unit quaternions and SO(3) matrices.
 """
 
-
-import numpy as np
 import numba
+import numpy as np
 
 
-
-@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True, cache=True)
 def matrix_from_quaternion(quaternion):
     """
     Computes the 3D rotation matrix that corresponds to the
@@ -57,7 +53,7 @@ def matrix_from_quaternion(quaternion):
 
 
 
-@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
+@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True, cache=True)
 def quaternion_from_matrix(matrix):
     """
     Computes the unit quaternion that corresponds to a
@@ -114,7 +110,7 @@ def quaternion_from_matrix(matrix):
 
 
 
-@numba.jit(numba.float64[:](numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:](numba.float64[:]), nopython=True, cache=True)
 def quaternion_from_euler(euler):
     """
     Computes the unit quaternion that corresponds to the
@@ -157,7 +153,7 @@ def quaternion_from_euler(euler):
 
 
 
-@numba.jit(numba.float64[:](numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:](numba.float64[:]), nopython=True, cache=True)
 def euler_from_quaternion(quaternion):
     """
     Computes the axis-angle representation that corresponds to the
@@ -200,7 +196,7 @@ def euler_from_quaternion(quaternion):
 
 
 
-@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True)
+@numba.jit(numba.float64[:](numba.float64[:, :]), nopython=True, cache=True)
 def euler_from_matrix(matrix):
     """
     Composition of the two functions `euler_from_quaternion` and
@@ -220,7 +216,7 @@ def euler_from_matrix(matrix):
 
 
 
-@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True, cache=True)
 def matrix_from_euler(euler):
     """
     Composition of the two functions `matrix_from_quaternion` and
@@ -237,68 +233,3 @@ def matrix_from_euler(euler):
         Rotation matrix
     """
     return matrix_from_quaternion(quaternion_from_euler(euler))
-
-
-
-@numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True)
-def update_euler(current_euler, increment_euler):
-    """
-    Function for composing two rotations given in axis-angle representation.
-    The function first converts both rotations to their matrix representation,
-    then forms the matrix product increment*current and converts back
-    to axis-angle representation.
-
-    Parameters
-    ----------
-    current_euler : array_like , shape = (3,)
-    increment_euler : array_like , shape = (3,)
-
-    Returns
-    -------
-    updated_euler : ndarray , shape = (3,)
-    """
-    increment_matrix = matrix_from_euler(increment_euler)
-
-    current_matrix = matrix_from_euler(current_euler)
-
-    updated_matrix = np.dot(increment_matrix, current_matrix)
-
-    updated_euler = euler_from_matrix(updated_matrix)
-
-    return updated_euler
-
-
-
-@numba.jit(numba.float64[:, :](numba.float64[:], numba.float64[:]), nopython=True)
-def interpolate_euler(euler_left, euler_right):
-    """
-    Compute the rotation matrix that interpolates between the two given
-    Euler vectors `euler_left` and `euler_right` in the following sense:
-
-    matrix_right = matrix_difference_halved * matrix_difference_halved * matrix_left
-    matrix_interpolant = matrix_difference_halved * matrix_left
-
-    Parameters
-    ----------
-    euler_left : array_like , shape = (3,)
-        Euler vector that corresponds to matrix_left
-    euler_right : array_like , shape = (3,)
-        Euler vector that corresponds to matrix_right
-
-    Returns
-    -------
-    matrix_interpolant : ndarray , shape = (3, 3)
-        Interpolating rotation matrix
-    """
-    matrix_left = matrix_from_euler(euler_left)
-    matrix_right = matrix_from_euler(euler_right)
-
-    matrix_difference = np.dot(matrix_right, matrix_left.T)
-
-    euler_difference = euler_from_matrix(matrix_difference)
-
-    euler_difference_halved = euler_difference / 2
-    matrix_difference_halved = matrix_from_euler(euler_difference_halved)
-
-    matrix_interpolant = np.dot(matrix_difference_halved, matrix_left)
-    return matrix_interpolant

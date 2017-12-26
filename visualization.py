@@ -1,8 +1,8 @@
 """ Functions for visualizing results """
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
+from mpl_toolkits.mplot3d import Axes3D # pylint: disable=W0611
 
 def plot_centerline(centerline, scale=0.15):
     """

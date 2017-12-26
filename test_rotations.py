@@ -2,8 +2,6 @@
 Unit tests for the rotations module
 """
 
-
-
 import numpy as np
 import rotations
 
@@ -219,33 +217,3 @@ def test_matrix_from_euler():
              rotations.quaternion_from_euler(known_euler))
 
     assert np.allclose(known_matrix, matrix)
-
-
-
-def test_update_euler():
-    """
-    Adding two known rotation matrices and check for the right result.
-    """
-    # rotate around z-axis by a random angle theta (-2pi < theta <+2pi)
-    theta = np.pi/4
-
-    known_matrix1 = np.array([[+np.cos(theta), -np.sin(theta), 0],
-                              [+np.sin(theta), +np.cos(theta), 0],
-                              [0, 0, 1]])
-    euler1 = rotations.euler_from_matrix(known_matrix1)
-
-    theta = np.pi/2
-
-    known_matrix2 = np.array([[+np.cos(theta), -np.sin(theta), 0],
-                              [+np.sin(theta), +np.cos(theta), 0],
-                              [0, 0, 1]])
-    euler2 = rotations.euler_from_matrix(known_matrix2)
-
-    theta = np.pi/4 + np.pi/2
-
-    known_matrix3 = np.array([[+np.cos(theta), -np.sin(theta), 0],
-                              [+np.sin(theta), +np.cos(theta), 0],
-                              [0, 0, 1]])
-    euler3 = rotations.euler_from_matrix(known_matrix3)
-
-    assert np.allclose(rotations.update_euler(euler1, euler2), euler3)

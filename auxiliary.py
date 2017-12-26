@@ -5,7 +5,7 @@ import numpy as np
 import numba
 
 
-@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:, :](numba.float64[:]), nopython=True, cache=True)
 def skew_matrix_from_vector(axial_vector):
     """
     Computes the skew symmetric matrix corresponding to the axial vector
@@ -36,7 +36,7 @@ def skew_matrix_from_vector(axial_vector):
 
 
 
-@numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True)
+@numba.jit(numba.float64[:](numba.float64[:], numba.float64[:]), nopython=True, cache=True)
 def cross(vector1, vector2):
     """
     Calculates the cross product of two 3D vectors. This function was written
