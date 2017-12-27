@@ -1,4 +1,7 @@
-""" Auxiliary functions """
+"""
+Auxiliary functions
+All functions in this module are free of side effects.
+"""
 
 import numpy as np
 

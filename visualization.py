@@ -1,9 +1,13 @@
-""" Functions for visualizing results """
+""" Routines for visualizing results """
+
 #import numpy as np
+
 import itertools
+
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.mplot3d import Axes3D # pylint: disable=W0611
+
 
 
 def plot_centerline(centerline, scale=0.15):
@@ -39,6 +43,7 @@ def plot_centerline(centerline, scale=0.15):
 
     # plot
     axis.plot(centerline[0, :], centerline[1, :], centerline[2, :])
+
 
 
 def plot_norms_in_loadstep(residuals_norm_evolution, increments_norm_evolution, load_step=0):

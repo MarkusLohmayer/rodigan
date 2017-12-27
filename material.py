@@ -1,10 +1,10 @@
 """
-Material properties and constitutive law of the special Cosserat rod.
+Class that stores material properties of a special Cosserat rod.
 """
 
 import numpy as np
 
-import kinematics
+from geometry import Geometry
 
 
 class Material:
@@ -29,8 +29,8 @@ class Material:
 
     @geometry.setter
     def geometry(self, value):
-        if not isinstance(value, kinematics.Geometry):
-            raise TypeError('Please reference an instance of the class kinematics.Geometry!')
+        if not isinstance(value, Geometry):
+            raise TypeError('Please reference an instance of the class geometry.Geometry!')
         # pylint: disable=W0201
         self.__geometry = value
 

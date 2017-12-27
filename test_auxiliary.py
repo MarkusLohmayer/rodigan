@@ -1,7 +1,6 @@
 """
-Unit tests for the rotations module
+Unit tests for the auxiliary module
 """
-
 
 import numpy as np
 import auxiliary
