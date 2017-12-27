@@ -1,5 +1,5 @@
 """
-FEM solver
+FEM solver for static (special Cosserat) rod
 """
 
 import numba
@@ -8,6 +8,7 @@ import numpy as np
 import auxiliary
 import constitutive
 import kinematics
+import visualization
 
 
 class StaticSolver:
@@ -20,13 +21,22 @@ class StaticSolver:
         Create a new FEM discretization by referencing a geometry, a material and
         specifying the number of elements.
         """
+        # parameters that must be set by the constructor
         self.geometry = geometry
         self.material = material
         self.number_of_elements = number_of_elements
 
-        # further parameters that can be manipulated
+        # further parameters that can be manipulated after initialization
         self.__load_control_parameters = 1e-4, 1e-4
         self.__maximum_iterations_per_loadstep = 100
+
+        # results from last call to `run_simulation`
+        self._centerline = None
+        self._load_step_iterations = None
+        self._load_steps = None
+        self._residuals_norm_evolution = None
+        self._increments_norm_evolution = None
+
 
 
     @property
@@ -106,6 +116,91 @@ class StaticSolver:
             raise ValueError('Expected a positive integer or None!')
 
 
+    @property
+    def centerline(self):
+        """The computed centerline of the last simulation run."""
+        return self._centerline
+
+
+    def plot_centerline(self):
+        """Creates a 3D plot of the beam's centerline."""
+        if self.centerline is not None:
+            visualization.plot_centerline(self.centerline)
+        else:
+            print("No simulation results were found.")
+
+
+    @property
+    def load_step_iterations(self):
+        """
+        load_step_iterations : list of integers
+            List of iteration counts in every load step.
+        """
+        return self._load_step_iterations
+
+
+    def plot_load_step_iterations(self):
+        """Creates a plots about how many iterations each load step took."""
+        if self._load_step_iterations is not None:
+            visualization.plot_load_step_iterations(self._load_step_iterations)
+        else:
+            print("No simulation results were found.")
+
+
+    @property
+    def load_steps(self):
+        """
+        load_steps : list of ndarrays
+            List of the applied boundary conditions in every load step.
+        """
+        return self._load_steps
+
+
+    @property
+    def residuals_norm_evolution(self):
+        """
+        residuals_norm_evolution : list of lists of floats
+            Every sublist corresponds to one load step and contains the norms
+            of the residuals vector in every iteration.
+        """
+        return self._residuals_norm_evolution
+
+
+    @property
+    def increments_norm_evolution(self):
+        """
+        increments_norm_evolution : list of lists of floats
+            Every sublist corresponds to one load step and contains the norms
+            of the increments vector in every iteration.
+        """
+        return self._increments_norm_evolution
+
+
+    def plot_norms_in_loadstep(self, load_step=-1):
+        """
+        Plots the evolution of residuals_norm and increments_norm in a given loadstep.
+
+        Parameters
+        ----------
+        load_step : int
+            Number of load step.
+            If -1 is chosen then all load steps are concatenated in one plot.
+        """
+        if not isinstance(load_step, int):
+            raise TypeError('load_step must be an integer!')
+        if self._load_step_iterations is not None and \
+           self._residuals_norm_evolution is not None and \
+           self._increments_norm_evolution is not None:
+            if -1 <= load_step < len(self.load_step_iterations):
+                visualization.plot_norms_in_loadstep(self._residuals_norm_evolution,
+                                                     self._increments_norm_evolution,
+                                                     load_step)
+            else:
+                print("The given load step does not exist")
+        else:
+            print("No simulation results were found.")
+
+
 
 class Cantilever(StaticSolver):
     """
@@ -114,7 +209,7 @@ class Cantilever(StaticSolver):
     The rightmost node is loaded by forces and/or moments.
     """
     def __init__(self, geometry, material, number_of_elements=100, boundary_condition=None):
-        StaticSolver.__init__(self, geometry, material, number_of_elements)
+        super().__init__(geometry, material, number_of_elements)
         self.__boundary_condition = np.zeros((6), dtype=float)
         if boundary_condition is not None:
             self.boundary_condition = boundary_condition
@@ -122,9 +217,10 @@ class Cantilever(StaticSolver):
 
     @property
     def boundary_condition(self):
-        """The six loading conditions at the rightmost node.
+        """
+        The six loading conditions at the rightmost node.
         First 3 numbers are forces and last 3 numbers are moments.
-        ?? frame"""
+        """
         return self.__boundary_condition
 
 
@@ -140,19 +236,26 @@ class Cantilever(StaticSolver):
 
 
     def run_simulation(self):
-        """Runs the simulation."""
+        """
+        Runs the simulation and stores the results in the attributes centerline
+        and convergence_metrics.
+        """
         if self.boundary_condition is None:
-            raise RuntimeError('The boundary condition must first be specified.')
+            raise RuntimeError('A boundary condition must first be specified!')
         if self.material.geometry is not self.geometry:
-            raise RuntimeError('The material is not referencing the same geometry.')
-        centerline = newton_rhapson(self.number_of_nodes, self.geometry.length,
-                                    self.material.elasticity_tensor,
-                                    self.boundary_condition,
-                                    self.load_control_parameters[0],
-                                    self.load_control_parameters[1],
-                                    self.maximum_iterations_per_loadstep
-                                   )
-        return centerline
+            raise RuntimeError('The material is referencing a different geometry!')
+        results = newton_rhapson(self.number_of_nodes, self.geometry.length,
+                                 self.material.elasticity_tensor,
+                                 self.boundary_condition,
+                                 self.load_control_parameters[0],
+                                 self.load_control_parameters[1],
+                                 self.maximum_iterations_per_loadstep
+                                )
+        self._centerline = results[0]
+        self._load_step_iterations = results[1]
+        self._load_steps = results[2]
+        self._residuals_norm_evolution = results[3]
+        self._increments_norm_evolution = results[4]
 
 
 
@@ -162,8 +265,8 @@ class Cantilever(StaticSolver):
 def assembly(i, element_length, elasticity_tensor, centerline, rotation,
              increments, second_strain_invariant, residuals, jacobian):
     """
-    update configuration in element i and
-    add the contributions of element i to the residuals vector and the Jacobian matrix
+    Updates configuration in element i and
+    adds the contributions of element i to the residuals vector and the Jacobian matrix.
     """
     # update configuration of element ...
 
@@ -316,9 +419,6 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
     This function contains initialization of required variables and the outer
     loop of a Newton-Rhapson scheme for solving the nonlinear FEM problem.
     """
-    # counting iterations in each load step
-    load_step_iterations = [0]
-
     number_of_elements = number_of_nodes - 1
 
     # length of elements
@@ -340,10 +440,18 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
     # must be stored persistently, so we can use Simo's update formula
     second_strain_invariant = np.zeros((3, number_of_elements), dtype=float) #numba.float64
 
+    # boundary_condition in each load step
+    load_steps = []
+
+    # counting iterations in each load step
+    load_step_iterations = []
+
     # for keeping track of convergence
     # list of lists: one list per load step
-    residuals_norm_evolution = [[]]
-    increments_norm_evolution = [[]]
+    residuals_norm = 0
+    residuals_norm_evolution = []
+    increments_norm = 0
+    increments_norm_evolution = []
 
     # we start simulation without any load and then increase the load gradually
     # -> load-controlled Newton-Rhapson
@@ -352,9 +460,24 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
 
     # Newton-Rhapson iterations
     while np.max(np.abs(target_load - current_load)) > 0.1:
+        # check for convergence to possibly begin next load step
+        if residuals_norm < load_control_parameter_residuals and \
+           increments_norm < load_control_parameter_increments:
+
+            # increase loading ->
+            # current load step serves as initial condition for next load step
+            load_change = 0.1 * np.sign(target_load - current_load)
+            current_load += load_change
+
+            # iteration counts and convergence indicators on a per-load-step basis
+            load_step_iterations.append(0)
+            load_steps.append(current_load)
+            residuals_norm_evolution.append([])
+            increments_norm_evolution.append([])
+
+
         # count iterations for current load step
         load_step_iterations[-1] += 1
-        #print(load_step_iterations)
 
         # start with a blank residuals vector
         residuals = np.zeros((6*number_of_nodes), dtype=float) #numba.float64
@@ -392,20 +515,5 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
             raise RuntimeError('Stopped execution after reaching maximum number'
                                ' of iterations in this load step!')
 
-        # check for convergence to possibly begin next load step
-        if residuals_norm < load_control_parameter_residuals and \
-           increments_norm < load_control_parameter_increments:
-
-            # increase loading ->
-            # current load step serves as initial condition for next load step
-            load_change = 0.1 * np.sign(target_load - current_load)
-            current_load += load_change
-
-            # iteration counts and convergence indicators on a per-load-step basis
-            load_step_iterations.append(0)
-            residuals_norm_evolution.append([])
-            increments_norm_evolution.append([])
-
-    #load_step_iterations = np.array(load_step_iterations)
-
-    return centerline, load_step_iterations, residuals_norm_evolution, increments_norm_evolution
+    return centerline, load_step_iterations, load_steps, \
+           residuals_norm_evolution, increments_norm_evolution
