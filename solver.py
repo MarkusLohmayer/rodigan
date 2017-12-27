@@ -2,18 +2,21 @@
 abstract base class for a generic special Cosserat rod FEM solver
 """
 
-from abc import ABCMeta #, abstractmethod
+from abc import ABCMeta, abstractmethod
 
 from material import Material
 from geometry import Geometry
 from result import Result
 
 
+
 class Solver(metaclass=ABCMeta):
     """
-    This class holds the general parameters of a FEM discretization.
+    This class holds parameters of a FEM discretization,
+    configuration parameters of the FEM solver,
+    calls the FEM solver code in `run_simulation` (abstractmethod),
+    and stores the results in a `Result` object, referenced by `self.result`.
     """
-    # All the required methods should be decorated with `@abstractmethod`.
 
     def __init__(self, geometry, material, number_of_elements):
         """
@@ -29,6 +32,9 @@ class Solver(metaclass=ABCMeta):
         self.__load_control_parameters = 1e-4, 1e-4
         self.__maximum_iterations_per_loadstep = 100
 
+        # result from last call to `run_simulation`
+        self.__result = None
+
 
 
     @property
@@ -40,8 +46,9 @@ class Solver(metaclass=ABCMeta):
     @geometry.setter
     def geometry(self, value):
         if not isinstance(value, Geometry):
-            raise TypeError('Please reference an instance of the class kinematics.Geometry!')
+            raise TypeError('Please reference an instance of the class Geometry!')
         self.__geometry = value # pylint: disable=W0201
+
 
 
     @property
@@ -53,8 +60,9 @@ class Solver(metaclass=ABCMeta):
     @material.setter
     def material(self, value):
         if not isinstance(value, Material):
-            raise TypeError('Please reference an instance of the class constitutive.Material!')
+            raise TypeError('Please reference an instance of the class Material!')
         self.__material = value # pylint: disable=W0201
+
 
 
     @property
@@ -70,10 +78,33 @@ class Solver(metaclass=ABCMeta):
         self.__number_of_elements = value # pylint: disable=W0201
 
 
+
     @property
     def number_of_nodes(self):
         """The number of nodes of the FEM discretization."""
         return self.number_of_elements + 1
+
+
+
+    @property
+    @abstractmethod
+    def boundary_condition(self):
+        """problem specific boundary conditions"""
+        pass
+
+
+    @boundary_condition.setter
+    @abstractmethod
+    def boundary_condition(self, value):
+        pass
+
+
+
+    @abstractmethod
+    def run_simulation(self):
+        """run the problem specific FEM solver code
+        and store results as a `Result` object in self.result"""
+
 
 
     @property
@@ -93,6 +124,7 @@ class Solver(metaclass=ABCMeta):
             raise ValueError('Expected a tuple of two floating point numbers!')
 
 
+
     @property
     def maximum_iterations_per_loadstep(self):
         """Number of iterations that are allowed within one loadstep.
@@ -106,3 +138,19 @@ class Solver(metaclass=ABCMeta):
             self.__maximum_iterations_per_loadstep = value
         else:
             raise ValueError('Expected an integer! (value >= -1)')
+
+
+
+    @property
+    def result(self):
+        """
+        A reference to an instance of the Result class.
+        """
+        return self.__result
+
+
+    @result.setter
+    def result(self, value):
+        if not isinstance(value, Result):
+            raise TypeError('Please reference an instance of the class Result!')
+        self.__result = value # pylint: disable=W0201

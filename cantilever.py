@@ -29,9 +29,6 @@ class Cantilever(Solver):
         if boundary_condition is not None:
             self.boundary_condition = boundary_condition
 
-        # result from last call to `run_simulation`
-        self.__result = None
-
 
     @property
     def boundary_condition(self):
@@ -65,24 +62,19 @@ class Cantilever(Solver):
             raise RuntimeError('The material is referencing a different geometry!')
 
         # run simulation
-        result = newton_rhapson(self.number_of_nodes, self.geometry.length,
-                                self.material.elasticity_tensor,
-                                self.boundary_condition,
-                                self.load_control_parameters[0],
-                                self.load_control_parameters[1],
-                                self.maximum_iterations_per_loadstep
-                               )
+        result_tuple = newton_rhapson(self.number_of_nodes, self.geometry.length,
+                                      self.material.elasticity_tensor,
+                                      self.boundary_condition,
+                                      self.load_control_parameters[0],
+                                      self.load_control_parameters[1],
+                                      self.maximum_iterations_per_loadstep
+                                     )
 
         # store the results in a container class instance
-        self.__result = Result(result)
+        self.result = Result(result_tuple)
 
 
-    @property
-    def result(self):
-        """
-        A reference to an instance of the Result class.
-        """
-        return self.__result
+
 
 
 
