@@ -471,7 +471,7 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
 
             # iteration counts and convergence indicators on a per-load-step basis
             load_step_iterations.append(0)
-            load_steps.append(current_load)
+            load_steps.append(np.copy(current_load))
             residuals_norm_evolution.append([])
             increments_norm_evolution.append([])
 
