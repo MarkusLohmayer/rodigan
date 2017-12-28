@@ -4,9 +4,9 @@ abstract base class for a generic special Cosserat rod FEM solver
 
 from abc import ABCMeta, abstractmethod
 
-from material import Material
-from geometry import Geometry
-from result import Result
+from .material import Material
+from .geometry import Geometry
+from .result import Result
 
 
 

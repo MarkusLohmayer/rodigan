@@ -4,7 +4,7 @@ Class that stores material properties of a special Cosserat rod.
 
 import numpy as np
 
-from geometry import Geometry
+from .geometry import Geometry
 
 
 class Material:

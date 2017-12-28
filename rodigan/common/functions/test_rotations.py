@@ -3,7 +3,8 @@ Unit tests for the rotations module
 """
 
 import numpy as np
-import rotations
+
+from . import rotations
 
 
 

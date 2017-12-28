@@ -2,7 +2,7 @@
 Class that stores simulation results (produced by a Solver subclass).
 """
 
-import visualization
+from . import visualization
 
 
 class Result:

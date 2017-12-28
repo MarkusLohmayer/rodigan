@@ -1,106 +1,25 @@
 """
-FEM solver for a static cantilever
+Code for assembly of the residuals vector and the Jacobian matrix.
 """
+
+import numpy as np
 
 import numba
 from numba.types import float64
 from numba.types import int64
+from numba.types import Tuple
 
-import numpy as np
+from ..common.functions import auxiliary
+from ..common.functions import rotations
 
-import auxiliary
-import rotations
-
-from solver import Solver
-from result import Result
-
-
-class Cantilever(Solver):
-    """
-    This class provides the functionality for solving a static cantilever rod problem.
-    The leftmost node is clamped (zero displacement, zero rotation).
-    The rightmost node is loaded by forces and/or moments.
-    """
-    def __init__(self, geometry, material, number_of_elements=100, boundary_condition=None):
-        super().__init__(geometry, material, number_of_elements)
-
-        # BC: reference to None or to a ndarray of six floats
-        self.__boundary_condition = None
-        if boundary_condition is not None:
-            self.boundary_condition = boundary_condition
+VEC = float64[:]
+MAT = float64[:, :]
 
 
-    @property
-    def boundary_condition(self):
-        """
-        The six loading conditions at the rightmost node.
-        First 3 numbers are forces and last 3 numbers are moments.
-        """
-        return self.__boundary_condition
-
-
-    @boundary_condition.setter
-    def boundary_condition(self, value):
-        if isinstance(value, list):
-            value = np.array(value, dtype=float)
-        if not isinstance(value, np.ndarray) or value.shape != (6,):
-            raise ValueError('The boundary condition must be an array of six numbers.')
-        if value.dtype != np.float64: # pylint: disable=E1101
-            value = value.astype(np.float64) # pylint: disable=E1101
-        self.__boundary_condition = value
-
-
-    def run_simulation(self):
-        """
-        Runs the simulation.
-        Results are stored in the container class instance `self.results`.
-        """
-        if self.boundary_condition is None:
-            raise RuntimeError('A boundary condition must first be specified!')
-
-        if self.material.geometry is not self.geometry:
-            raise RuntimeError('The material is referencing a different geometry!')
-
-        # run simulation
-        result_tuple = newton_rhapson(self.number_of_nodes, self.geometry.length,
-                                      self.material.elasticity_tensor,
-                                      self.boundary_condition,
-                                      self.load_control_parameters[0],
-                                      self.load_control_parameters[1],
-                                      self.maximum_iterations_per_loadstep
-                                     )
-
-        # store the results in a container class instance
-        self.result = Result(result_tuple)
-
-
-
-
-
-
-@numba.jit((int64, float64[:, :], float64[:, :], float64[:]),
-           nopython=True, cache=True)
-def update_configuration(number_of_nodes, centerline, rotation, increments):
-    """Updates configuration."""
-    for i in range(1, number_of_nodes):
-        # update centerline at right node of element
-        centerline[:, i] += increments[6*i:6*i+3]
-
-        # update rotation at right node of element
-        rotation[:, i] = rotations.compose_euler(rotation[:, i], increments[6*i+3:6*i+6])
-
-        # watch out for strange things that might happen ...
-        if np.linalg.norm(rotation[:, i]) > np.pi:
-            print('current rotation larger than pi')
-
-        if np.linalg.norm(increments[6*i+3:6*i+6]) > np.pi:
-            print('current incremental rotation larger than pi')
-
-
-
-@numba.jit(numba.types.Tuple((float64[:], float64[:, :]))
-           (int64, float64[:], float64[:, :], float64[:, :], float64[:, :],
-            float64[:], float64[:, :]), nopython=True, cache=True)
+# pylint: disable=R0913
+# pylint: disable=R0914
+@numba.jit(Tuple((VEC, MAT))
+           (int64, VEC, MAT, MAT, MAT, VEC, MAT), nopython=True, cache=True)
 def assemble_residuals_and_jacobian(number_of_nodes, element_lengths, elasticity_tensor,
                                     centerline, rotation,
                                     increments, second_strain_invariant):
@@ -235,110 +154,3 @@ def assemble_residuals_and_jacobian(number_of_nodes, element_lengths, elasticity
         # tangent due to boundary loads
 
     return residuals, jacobian
-
-
-
-#@numba.jit(nopython=True, cache=True)
-def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_condition,
-                   load_control_parameter_residuals, load_control_parameter_increments,
-                   maximum_iterations_per_loadstep):
-    """
-    This function contains initialization of required variables and the outer
-    loop of a Newton-Rhapson scheme for solving the nonlinear FEM problem.
-    """
-    number_of_elements = number_of_nodes - 1
-
-    # length of elements
-    element_lengths = np.ones((number_of_elements)) * (length / number_of_elements)
-
-    # centerline displacement at each node
-    centerline = np.zeros((3, number_of_nodes), dtype=float) #numba.float64
-    for i in range(number_of_elements):
-        centerline[2, i+1] = centerline[2, i] + element_lengths[i]
-
-    # rotation of crosssection at each node,
-    # axis-angle representation: 1 Euler vector per node
-    rotation = np.zeros((3, number_of_nodes), dtype=float) #numba.float64
-
-    # displacement increment vector
-    # 3 centerline displacement variables + 3 cross-section rotation variables per node
-    increments = np.zeros((6 * number_of_nodes), dtype=float) #numba.float64
-
-    # must be stored persistently, so we can use Simo's update formula
-    second_strain_invariant = np.zeros((3, number_of_elements), dtype=float) #numba.float64
-
-    # boundary_condition in each load step
-    load_steps = []
-
-    # counting iterations in each load step
-    load_step_iterations = []
-
-    # for keeping track of convergence
-    # list of lists: one list per load step
-    residuals_norm = 0
-    residuals_norm_evolution = []
-    increments_norm = 0
-    increments_norm_evolution = []
-
-    # we start simulation without any load and then increase the load gradually
-    # -> load-controlled Newton-Rhapson
-    target_load = boundary_condition
-    current_load = np.zeros((6), dtype=float) #numba.float64
-
-    # Newton-Rhapson iterations
-    while np.max(np.abs(target_load - current_load)) > 0.1:
-        # check for convergence to possibly begin next load step
-        if residuals_norm < load_control_parameter_residuals and \
-           increments_norm < load_control_parameter_increments:
-
-            # increase loading ->
-            # current load step serves as initial condition for next load step
-            load_change = 0.1 * np.sign(target_load - current_load)
-            current_load += load_change
-
-            # iteration counts and convergence indicators on a per-load-step basis
-            load_step_iterations.append(0)
-            load_steps.append(np.copy(current_load))
-            residuals_norm_evolution.append([])
-            increments_norm_evolution.append([])
-
-
-        # count iterations for current load step
-        load_step_iterations[-1] += 1
-
-        # assemble residuals vector and Jacobian matrix
-        residuals, jacobian = assemble_residuals_and_jacobian(number_of_nodes,
-                                                              element_lengths, elasticity_tensor,
-                                                              centerline, rotation,
-                                                              increments, second_strain_invariant)
-
-        # apply Neumann boundary conditions
-        residuals[-6:] -= current_load
-
-        # solve the linearized problem
-        increments[6:] = np.linalg.solve(-jacobian[6:, 6:], residuals[6:])
-
-        # compute norm of residuals vector
-        residuals_norm = np.linalg.norm(residuals[6:])
-        residuals_norm_evolution[-1].append(residuals_norm)
-
-        # compute norm of increments vector
-        increments_norm = np.linalg.norm(increments[6:])
-        increments_norm_evolution[-1].append(increments_norm)
-
-        # don't allow large increments
-        if increments_norm > 1:
-            print('normalized increments!')
-            increments[6:] = increments[6:] / increments_norm
-
-        # stop execution after maximum iterations in one load step
-        if maximum_iterations_per_loadstep > 0:
-            if load_step_iterations[-1] > maximum_iterations_per_loadstep:
-                raise RuntimeError('Stopped execution after reaching maximum number'
-                                   ' of iterations in this load step!')
-
-        # update the configuration for the next iteration
-        update_configuration(number_of_nodes, centerline, rotation, increments)
-
-    return centerline, load_step_iterations, load_steps, \
-           residuals_norm_evolution, increments_norm_evolution

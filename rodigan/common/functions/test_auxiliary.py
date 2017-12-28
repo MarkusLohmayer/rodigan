@@ -3,7 +3,8 @@ Unit tests for the auxiliary module
 """
 
 import numpy as np
-import auxiliary
+
+from . import auxiliary
 
 
 def test_cross_products():
