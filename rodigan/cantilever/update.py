@@ -5,8 +5,7 @@ Code for updating the rod's configuration.
 import numpy as np
 
 import numba
-from numba.types import float64
-from numba.types import int64
+from numba.types import float64, int64
 
 from ..common.functions import rotations
 

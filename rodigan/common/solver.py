@@ -30,7 +30,7 @@ class Solver(metaclass=ABCMeta):
 
         # further parameters that can be manipulated after initialization
         self.__load_control_parameters = 1e-4, 1e-4
-        self.__maximum_iterations_per_loadstep = 100
+        self.__maximum_iterations_per_loadstep = 25
 
         # result from last call to `run_simulation`
         self.__result = None

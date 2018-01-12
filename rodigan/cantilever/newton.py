@@ -5,11 +5,8 @@ Code for Newton-Rhapson scheme.
 import numpy as np
 from numpy import float64 # pylint: disable=E0611
 
-import numba
-# from numba.types import float64
-# from numba.types import int64
-# from numba.types import Tuple
-# from numba.types import List
+#import numba
+# from numba.types import float64, int64, Tuple, List
 
 from .update import update_configuration
 from .assembly import assemble_residuals_and_jacobian
@@ -26,7 +23,8 @@ from .assembly import assemble_residuals_and_jacobian
 #                   List(List(float64, reflected=True), reflected=True)))
 #            (int64, float64, MAT, VEC, float64, float64, int64),
 #            nopython=True, cache=True)
-@numba.jit(cache=True)
+# # numba: reflected list(reflected list(float64))
+# # unsupported nested memory-managed object
 def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_condition,
                    load_control_residuals, load_control_increments,
                    maximum_iterations_per_loadstep):

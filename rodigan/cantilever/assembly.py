@@ -5,9 +5,7 @@ Code for assembly of the residuals vector and the Jacobian matrix.
 import numpy as np
 
 import numba
-from numba.types import float64
-from numba.types import int64
-from numba.types import Tuple
+from numba.types import float64, int64, Tuple
 
 from ..common.functions import auxiliary
 from ..common.functions import rotations
@@ -56,23 +54,25 @@ def assemble_residuals_and_jacobian(number_of_nodes, element_lengths, elasticity
         # compute second invariant strain measure in the element using Simo's formula ...
 
         # incremental rotation tangent vector
-        incremental_euler_tangent = (increments[6*i+3:6*i+6] - increments[6*(i-1)+3:6*(i-1)+6]) / element_length
+        incremental_euler_tangent = \
+        (increments[6*i+3:6*i+6] - increments[6*(i-1)+3:6*(i-1)+6]) / element_length
 
         # incremental Euler vector at midpoint of element
         mid_incremental_euler = (increments[6*i+3:6*i+6] + increments[6*(i-1)+3:6*(i-1)+6]) / 2
-        norm_of_mid_incremental_euler = np.linalg.norm(mid_incremental_euler)
+        mid_incremental_euler_norm = np.linalg.norm(mid_incremental_euler)
 
         # compute beta
-        if norm_of_mid_incremental_euler < 1e-6:
+        if mid_incremental_euler_norm < 1e-6:
             # use asymptotic approximation of Simo's formula to save computational cost
             beta = incremental_euler_tangent + \
                    0.5*auxiliary.cross(mid_incremental_euler, incremental_euler_tangent)
         else:
-            x = np.sin(norm_of_mid_incremental_euler) / norm_of_mid_incremental_euler
-            delu = mid_incremental_euler / norm_of_mid_incremental_euler
-            beta = x*incremental_euler_tangent + \
-                   (1-x) * np.dot(delu.T, incremental_euler_tangent) * delu + \
-                   2 * (np.sin(0.5*norm_of_mid_incremental_euler) / norm_of_mid_incremental_euler)**2 * auxiliary.cross(mid_incremental_euler, incremental_euler_tangent)
+            fooo = np.sin(mid_incremental_euler_norm) / mid_incremental_euler_norm
+            delu = mid_incremental_euler / mid_incremental_euler_norm
+            beta = fooo*incremental_euler_tangent + \
+                   (1-fooo) * np.dot(delu.T, incremental_euler_tangent) * delu + \
+                   2*(np.sin(0.5*mid_incremental_euler_norm) / mid_incremental_euler_norm)**2 \
+                   * auxiliary.cross(mid_incremental_euler, incremental_euler_tangent)
 
         # updating the second strain invariant
         second_strain_invariant[:, i-1] += np.dot(rotation_matrix.T, beta)
@@ -80,16 +80,9 @@ def assemble_residuals_and_jacobian(number_of_nodes, element_lengths, elasticity
         #-----------------
 
         # compute internal reactions in inertial frame of the element ...
-
-        forces = np.dot(rotation_matrix,
-                        np.array([elasticity_tensor[0, 0]*first_strain_invariant[0],
-                                  elasticity_tensor[1, 1]*first_strain_invariant[1],
-                                  elasticity_tensor[2, 2]*first_strain_invariant[2]]))
-
-        moments = np.dot(rotation_matrix,
-                         np.array([elasticity_tensor[3, 3]*second_strain_invariant[0, i-1],
-                                   elasticity_tensor[4, 4]*second_strain_invariant[1, i-1],
-                                   elasticity_tensor[5, 5]*second_strain_invariant[2, i-1]]))
+        strain_invariants = np.hstack((first_strain_invariant, second_strain_invariant[:, i-1]))
+        forces = np.dot(rotation_matrix, np.dot(elasticity_tensor[0:3, :], strain_invariants))
+        moments = np.dot(rotation_matrix, np.dot(elasticity_tensor[3:6, :], strain_invariants))
 
         #-----------------
 

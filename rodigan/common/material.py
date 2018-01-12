@@ -89,13 +89,26 @@ class Material:
 
 
     @property
+    def extensional_twisting_stiffness(self):
+        """The coupling between axial strain and twisting of the rod (also called parameter E)."""
+        return 0 #np.sqrt(self.extensional_stiffness * self.twisting_stiffness)
+
+
+    @property
+    def bending_shearing_stiffness(self):
+        """The coupling between bending and shearing of the rod (also called parameter F)."""
+        return 0 #np.sqrt(self.bending_stiffness * self.shearing_stiffness)
+
+
+    @property
     def elasticity_tensor(self):
         """The elasticity tensor of the rod."""
-        return np.diag([self.shearing_stiffness, self.shearing_stiffness,
-                        self.extensional_stiffness,
-                        self.bending_stiffness, self.bending_stiffness,
-                        self.twisting_stiffness])
-
-
-    # add bend-twist coupling
-    #C[4, 5] = C[5, 4] = GJ/10
+        matrix = np.diag([self.shearing_stiffness, self.shearing_stiffness,
+                          self.extensional_stiffness,
+                          self.bending_stiffness, self.bending_stiffness,
+                          self.twisting_stiffness])
+        # add coupling terms
+        matrix[0, 3] = matrix[3, 0] = \
+        matrix[1, 4] = matrix[4, 1] = self.bending_shearing_stiffness / 2
+        matrix[2, 5] = matrix[5, 2] = self.extensional_twisting_stiffness / 2
+        return matrix
