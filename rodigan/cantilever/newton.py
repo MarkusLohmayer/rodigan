@@ -61,34 +61,43 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
 
     # for keeping track of convergence
     # list of lists: one list per load step
-    residuals_norm = 0
     residuals_norm_evolution = []
-    increments_norm = 0
     increments_norm_evolution = []
 
     # we start simulation without any load and then increase the load gradually
     # -> load-controlled Newton-Rhapson
     current_load = np.zeros((6), dtype=float64)
 
-    # Newton-Rhapson iterations
-    while np.max(np.abs(boundary_condition - current_load)) > 0.1:
-        # check for convergence to possibly begin next load step
-        if residuals_norm < load_control_residuals and \
-           increments_norm < load_control_increments:
+    # flag that marks if load step has converged
+    converged = True
 
-            # increase loading ->
-            # current load step serves as initial condition for next load step
+    # Newton-Rhapson iterations
+    while np.max(np.abs(boundary_condition - current_load)) > 0.1 or not converged:
+
+        # when converged begin next load step
+        if converged:
+            # increase loading
+            # (last load step serves as initial condition for new load step)
             current_load += 0.1 * np.sign(boundary_condition - current_load)
 
-            # iteration counts and convergence indicators on a per-load-step basis
+            # bookkeping stuff (on a per-load-step basis)
+            # iteration count in new load step
             load_step_iterations.append(0)
+            # boundary condition in new load step
             load_steps.append(np.copy(current_load))
+            # evolution of convergence indicators in new load step
             residuals_norm_evolution.append([])
             increments_norm_evolution.append([])
 
 
         # count iterations for current load step
         load_step_iterations[-1] += 1
+
+        # stop execution after maximum iterations in one load step
+        if maximum_iterations_per_loadstep > 0:
+            if load_step_iterations[-1] > maximum_iterations_per_loadstep:
+                raise RuntimeError('Stopped execution after reaching maximum number'
+                                   ' of iterations in this load step!')
 
         # assemble residuals vector and Jacobian matrix
         residuals, jacobian = assemble_residuals_and_jacobian(number_of_nodes,
@@ -115,14 +124,12 @@ def newton_rhapson(number_of_nodes, length, elasticity_tensor, boundary_conditio
             print('normalized increments!')
             increments[6:] = increments[6:] / increments_norm
 
-        # stop execution after maximum iterations in one load step
-        if maximum_iterations_per_loadstep > 0:
-            if load_step_iterations[-1] > maximum_iterations_per_loadstep:
-                raise RuntimeError('Stopped execution after reaching maximum number'
-                                   ' of iterations in this load step!')
-
         # update the configuration for the next iteration
         update_configuration(number_of_nodes, centerline, rotation, increments)
+
+        # finally, evaluate condition for convergence
+        converged = residuals_norm < load_control_residuals and \
+                    increments_norm < load_control_increments
 
     return centerline, load_step_iterations, load_steps, \
            residuals_norm_evolution, increments_norm_evolution
